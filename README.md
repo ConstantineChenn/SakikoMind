@@ -21,35 +21,104 @@
 ## Architecture | 系统架构
 
 ```mermaid
-flowchart LR
-    U[User / 用户] --> V[Vue Workspace]
-    V --> N[Nginx Gateway]
-    N --> A[FastAPI /chat]
-    A --> M[Redis Working Memory]
-    A --> R[ChromaDB RAG & Semantic Memory]
-    A --> I[Hybrid Intent Recognition]
-    I --> G[General Agent]
-    I --> T[Technical Agent]
-    I --> B[Billing Agent]
-    G --> S[Dynamic Markdown Skills]
-    T --> S
-    B --> S
-    S --> L[Anthropic-Compatible LLM]
-    A --> H[SQLite Handoff Tickets]
-    A --> P[Prometheus Metrics]
+flowchart TB
+    User["User / 用户"] --> Browser["Browser<br/>Sakiko Console"]
+
+    subgraph Cloud["Alibaba Cloud ECS · Docker Compose"]
+        direction TB
+        Gateway["Nginx Gateway<br/>Vue static assets · API proxy · rate limit"]
+
+        subgraph Application["Application Layer · FastAPI"]
+            API["API Layer<br/>/chat · /knowledge · /handoffs · /eval"]
+            Orchestrator["Agent Orchestrator<br/>intent · risk · routing · trace"]
+            Tools["MCP-style Tool Manager<br/>rewrite · parallel retrieval · rerank<br/>cache · timeout · circuit breaker · fallback"]
+            Skills["Dynamic Markdown Skills<br/>version · owner · escalation rules"]
+            Agents["General · Technical · Billing Agents"]
+        end
+
+        subgraph State["State & Persistence"]
+            Redis[("Redis<br/>working memory")]
+            Chroma[("ChromaDB<br/>knowledge base · semantic memory")]
+            Tickets[("SQLite<br/>handoff tickets")]
+        end
+
+        Prometheus["Prometheus<br/>metrics collection"]
+    end
+
+    Model["Anthropic-compatible LLM<br/>DeepSeek / Claude"]
+
+    Browser -->|"HTTP :80"| Gateway
+    Gateway -->|"SPA assets"| Browser
+    Gateway -->|"/chat and management APIs"| API
+    API -->|"read / write context"| Redis
+    API --> Tools
+    Tools <-->|"retrieve / persist"| Chroma
+    API --> Orchestrator
+    Orchestrator --> Agents
+    Agents --> Skills
+    Agents -->|"grounded prompt"| Model
+    API -->|"create / close"| Tickets
+    Prometheus -. "scrapes /metrics" .-> API
+
+    classDef edge fill:#EEF5FF,stroke:#3578E5,stroke-width:2px,color:#172B4D;
+    classDef service fill:#E8F7F4,stroke:#218C85,stroke-width:2px,color:#123B3A;
+    classDef store fill:#FFF5E6,stroke:#D97A1B,stroke-width:2px,color:#5A3512;
+    classDef external fill:#F3EDFF,stroke:#7B61C9,stroke-width:2px,color:#33215E;
+
+    class User,Browser,Gateway edge;
+    class API,Orchestrator,Tools,Skills,Agents,Prometheus service;
+    class Redis,Chroma,Tickets store;
+    class Model external;
 ```
 
-**Request flow | 请求链路**
+**Deployment notes | 部署说明：** only Nginx exposes port `80` in production. FastAPI, Redis and ChromaDB communicate on the Docker-internal network; Prometheus binds to `127.0.0.1:9090` for SSH-tunnel access.
+**生产部署说明：** 公网仅由 Nginx 暴露 `80` 端口。FastAPI、Redis 与 ChromaDB 仅通过 Docker 内部网络通信；Prometheus 绑定到 `127.0.0.1:9090`，通过 SSH 隧道按需访问。
 
-```text
-Message → memory retrieval → RAG retrieval → intent & risk decision
-        → agent routing + Skill injection → LLM response → citations / handoff ticket
-        → memory write-back + trace and metrics
+### `/chat` Request Lifecycle | `/chat` 请求时序
 
-用户消息 → 记忆读取 → RAG 检索 → 意图与风险判断
-        → Agent 路由与 Skill 注入 → 模型生成 → 引用 / 人工工单
-        → 记忆写回、Trace 与指标记录
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User / 用户
+    participant UI as Vue Workspace
+    participant GW as Nginx Gateway
+    participant API as FastAPI
+    participant MEM as Redis Memory
+    participant RAG as MCP RAG + ChromaDB
+    participant ORC as Orchestrator + Skills
+    participant LLM as Compatible LLM
+    participant DB as SQLite Tickets
+
+    U->>UI: Submit message
+    UI->>GW: POST /chat
+    GW->>API: Proxy request + forwarded headers
+    par Context retrieval
+        API->>MEM: Read working memory / profile
+    and Knowledge retrieval
+        API->>RAG: Rewrite → retrieve → rerank
+        RAG-->>API: Top-K citations / fallback result
+    end
+    API->>ORC: Intent, risk, context and citations
+    ORC->>ORC: Select agent + inject governed Skill
+    ORC->>LLM: Grounded prompt
+    LLM-->>ORC: Candidate response
+    ORC-->>API: Response + intent + agent decision
+    opt High-risk or explicit human request
+        API->>DB: Create persistent handoff ticket
+        DB-->>API: Ticket ID, priority and redacted summary
+    end
+    par Write back
+        API->>MEM: Persist conversation and profile updates
+    and Observability
+        API->>API: Emit trace stages and Prometheus metrics
+    end
+    API-->>GW: Structured response + citations + handoff metadata
+    GW-->>UI: Render answer, RAG references and latency
+    UI-->>U: Traceable customer-service response
 ```
+
+**Design principle | 设计原则：** facts come from retrievable policy documents, response boundaries come from governed Skills, and operational decisions remain traceable through `trace_id`, citations and persistent handoff tickets.
+**设计原则：** 易变化的业务事实来自可检索政策文档，话术边界与升级条件来自受治理的 Skills；每次决策通过 `trace_id`、引用和持久化工单保留可追溯证据。
 
 ## Production Highlights | 工程化能力
 

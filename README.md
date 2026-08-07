@@ -1,7 +1,7 @@
 # SakikoMind · Enterprise AI Customer-Service Agent
 
 > **Enterprise AI customer-service platform with hybrid intent recognition, multi-agent orchestration, MCP-powered RAG, dynamic Skills, memory, human handoff, observability and evaluation.**  
-> **企业级 AI 智能客服 Agent 平台，融合三路意图识别、多 Agent 编排、MCP 工具化 RAG、动态 Skills、记忆、人工升级、可观测性与评测闭环。**
+> **SakikoMind是一款企业级 AI 智能客服 Agent 平台，融合三路意图识别、多 Agent 编排、MCP 工具化 RAG、动态 Skills、记忆、人工升级、可观测性与评测闭环。**
 
 [Live Demo](http://120.26.144.124/) · [API Docs](http://120.26.144.124/docs) · [Cloud Deployment Guide](SakikoMind/云端部署指南.md) · [Demo Script](SakikoMind/演示脚本.md)
 

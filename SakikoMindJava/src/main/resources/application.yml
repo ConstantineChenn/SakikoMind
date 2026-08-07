@@ -1,0 +1,100 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: sakikomind-java
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:anthropic}
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  mvc:
+    pathmatch:
+      matching-strategy: ANT_PATH_MATCHER
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:sakikomind123}
+      timeout: 2s
+  ai:
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:${LLM_STARTUP_API_KEY:sakikomind-local-placeholder}}
+      base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
+      chat:
+        options:
+          model: ${ANTHROPIC_MODEL:claude-3-5-sonnet-20241022}
+          temperature: 0.2
+          max-tokens: 1024
+    vectorstore:
+      chroma:
+        client:
+          host: ${CHROMA_HOST:http://localhost}
+          port: ${CHROMA_PORT:8001}
+        collection-name: ${CHROMA_COLLECTION:sakikomind_knowledge}
+        initialize-schema: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+
+sakikomind:
+  llm:
+    fallback-enabled: ${LLM_FALLBACK_ENABLED:true}
+  memory:
+    ttl-seconds: ${MEMORY_TTL_SECONDS:86400}
+    working-max: ${MEMORY_WORKING_MAX:20}
+    compress-at: ${MEMORY_COMPRESS_AT:15}
+  rag:
+    top-k: ${RAG_TOP_K:4}
+    bm25-weight: ${RAG_BM25_WEIGHT:0.45}
+    vector-weight: ${RAG_VECTOR_WEIGHT:0.55}
+  storage:
+    data-dir: ${SAKIKOMIND_DATA_DIR:data/java}
+    knowledge-path: ${KNOWLEDGE_STORE_PATH:${SAKIKOMIND_DATA_DIR:data/java}/knowledge-store.json}
+    memory-path: ${MEMORY_STORE_PATH:${SAKIKOMIND_DATA_DIR:data/java}/memory-store.json}
+  monitor:
+    success-rate-threshold: ${MONITOR_SUCCESS_RATE_THRESHOLD:0.90}
+    latency-ms-threshold: ${MONITOR_LATENCY_MS_THRESHOLD:3000}
+    webhook-url: ${ALERT_WEBHOOK_URL:}
+  eval:
+    baseline-path: ${EVAL_BASELINE_PATH:data/eval/baseline.json}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: deepseek
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.anthropic.autoconfigure.AnthropicChatAutoConfiguration
+      - org.springframework.ai.vectorstore.chroma.autoconfigure.ChromaVectorStoreAutoConfiguration
+  ai:
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY:${LLM_STARTUP_API_KEY:sakikomind-local-placeholder}}
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      chat:
+        options:
+          model: ${DEEPSEEK_MODEL:deepseek-chat}
+          temperature: ${DEEPSEEK_TEMPERATURE:0.2}
+          max-tokens: ${DEEPSEEK_MAX_TOKENS:1024}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: anthropic
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.deepseek.autoconfigure.DeepSeekChatAutoConfiguration
+      - org.springframework.ai.vectorstore.chroma.autoconfigure.ChromaVectorStoreAutoConfiguration

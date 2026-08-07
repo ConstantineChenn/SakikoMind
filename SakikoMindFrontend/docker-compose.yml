@@ -1,0 +1,11 @@
+services:
+  sakikomind-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sakikomind-frontend
+    ports:
+      - "5174:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

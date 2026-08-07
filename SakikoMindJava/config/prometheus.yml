@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: sakikomind-java
+    environment: production
+
+scrape_configs:
+  - job_name: sakikomind-java-app
+    metrics_path: /metrics
+    scrape_interval: 10s
+    static_configs:
+      - targets:
+          - sakikomind-java:8080
+        labels:
+          service: sakikomind-java
+
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090

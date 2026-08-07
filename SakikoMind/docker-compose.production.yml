@@ -1,0 +1,25 @@
+# SakikoMind 公网部署覆盖配置
+# 用法：docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
+# 依赖 Docker Compose v2.24+ 对 !reset 合并标签的支持。
+
+services:
+  redis:
+    ports: !reset []
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+
+  chromadb:
+    ports: !reset []
+
+  prometheus:
+    # 如需临时查看 Prometheus，可通过 SSH 隧道访问服务器 127.0.0.1:9090。
+    ports: !override
+      - "127.0.0.1:9090:9090"
+
+  sakikomind:
+    # 仅允许 Nginx 通过 Docker 内部网络访问应用。
+    ports: !reset []
+
+  nginx:
+    # 云防火墙仅开放 80；HTTPS 应由 Caddy、云负载均衡或 CDN 终结。
+    ports: !override
+      - "${HTTP_BIND_ADDRESS:-0.0.0.0}:80:80"

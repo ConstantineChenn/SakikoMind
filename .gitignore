@@ -1,0 +1,34 @@
+# Secrets and local configuration
+**/.env
+!**/.env.example
+!**/.env.*.example
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+
+# Node.js
+**/node_modules/
+**/dist/
+
+# Java and IDE build output
+**/target/
+**/.idea/
+**/*.iml
+SakikoMindJava/.mvn/apache-maven-*/
+
+# Runtime data and logs
+SakikoMind/data/chroma/
+SakikoMind/data/handoffs/
+SakikoMind/data/eval/snapshots/
+SakikoMind/logs/
+
+# Local operating-system files and deployment archives
+*.DS_Store
+*.tar
+*.tar.gz
+*.zip
+
+# Local archive note
+说明

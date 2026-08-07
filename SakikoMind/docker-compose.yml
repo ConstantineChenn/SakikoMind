@@ -1,0 +1,146 @@
+# SakikoMind 智能客服系统 — Docker Compose 服务编排
+# 三级记忆架构：Redis（工作记忆）+ ChromaDB（情景记忆 + 用户画像）
+
+services:
+
+  # ── Redis 缓存（工作记忆）────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: sakikomind-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-sakikomind123}
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - sakikomind-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-sakikomind123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── ChromaDB 向量数据库（情景记忆 + 用户画像）────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:0.5.23
+    container_name: sakikomind-chromadb
+    ports:
+      - "8001:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    volumes:
+      - chromadb-data:/chroma/chroma
+    restart: unless-stopped
+    networks:
+      - sakikomind-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ── Prometheus 监控 ─────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sakikomind-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    networks:
+      - sakikomind-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ── SakikoMind 主应用 ─────────────────────────────────────────────────────────
+  sakikomind:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: sakikomind-app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # 容器内固定值，覆盖 .env 中的本地路径
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-sakikomind123}@redis:6379/0
+      - CHROMA_PERSIST_DIRECTORY=/app/data/chroma
+      - EVAL_BASELINE_PATH=/app/data/eval/baseline.json
+      - SAKIKOMIND_SKILLS_DIR=/app/skills
+      - HANDOFF_DB_PATH=/app/data/handoffs/tickets.db
+    volumes:
+      - ./data/chroma:/app/data/chroma
+      - ./data/eval:/app/data/eval
+      - ./data/handoffs:/app/data/handoffs
+      - ./skills:/app/skills
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sakikomind-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  # ── Nginx 反向代理 ──────────────────────────────────────────────────────────
+  nginx:
+    build:
+      context: ../SakikoMindFrontend
+      dockerfile: Dockerfile.cloud
+    image: sakikomind-gateway:local
+    container_name: sakikomind-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      sakikomind:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sakikomind-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# ── 网络 ────────────────────────────────────────────────────────────────────
+networks:
+  sakikomind-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ── 数据卷 ──────────────────────────────────────────────────────────────────
+volumes:
+  redis-data:
+  chromadb-data:
+  prometheus-data:
+  nginx-logs:

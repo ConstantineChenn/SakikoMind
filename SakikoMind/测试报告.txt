@@ -1,0 +1,167 @@
+SakikoMind 智能客服系统测试报告
+================================
+
+一、测试目的
+验证 SakikoMind 在真实大模型调用下的意图识别、Agent 路由、知识库检索和人工升级能力。
+
+二、测试环境
+- 运行方式：Docker Compose
+- 基础环境：Windows + WSL 2 + Docker Desktop
+- 后端入口：http://localhost:8000
+- 接口文档：http://localhost:8000/docs
+- 模型服务：DeepSeek Anthropic 兼容接口
+- 已启动组件：SakikoMind API、Redis、ChromaDB、Prometheus、Nginx
+
+三、测试结果
+
+1. 普通咨询
+   输入：你好，我想了解一下你们能提供哪些服务？
+   结果：通过
+   intent：query
+   agent_type：general
+   knowledge_used：true
+   说明：系统正确识别普通咨询，并由通用客服 Agent 返回服务范围说明。
+
+2. 退款申请
+   输入：我想申请退款，应该怎么处理？
+   结果：部分通过
+   intent：request
+   agent_type：general
+   knowledge_used：true
+   说明：回答正确给出了退款条件、审核和到账流程，但未按预期路由到 billing Agent。
+
+3. 重复扣款
+   输入：我的银行卡被重复扣款了，请帮我处理。
+   结果：通过
+   intent：billing
+   agent_type：billing
+   escalated：true
+   knowledge_used：true
+   说明：系统正确识别资金风险，要求订单号、交易时间、金额和支付渠道，并建议人工复核。
+
+4. 登录认证失败
+   输入：我无法登录账号，系统提示认证失败。
+   结果：部分通过
+   intent：account
+   agent_type：technical
+   escalated：true
+   knowledge_used：true
+   说明：主路由正确进入技术支持 Agent，并给出账号、验证码、网络和缓存排查步骤；但响应末尾混入了不相关的 billing Agent 内容。
+
+5. API 调用超时
+   输入：调用 API 时一直超时，请问怎么排查？
+   结果：通过
+   intent：technical
+   agent_type：technical
+   escalated：false
+   knowledge_used：true
+   说明：系统正确给出 DNS、网络连通性、端口、日志和 curl 复现等排查建议。回答偏长，末尾可能被截断。
+
+6. 转人工
+   输入：这个问题我希望转人工客服处理。
+   结果：通过
+   intent：escalation
+   agent_type：general
+   escalated：true
+   knowledge_used：true
+   说明：系统正确进入人工升级流程，并在转接前收集问题类别，减少用户重复描述。
+
+四、总体结论
+- 六个场景均成功返回 HTTP 响应，模型调用、知识库检索、Agent 路由和人工升级链路已打通。
+- 完全符合预期的场景：普通咨询、重复扣款、API 超时、转人工。
+- 部分符合预期的场景：退款申请、登录认证失败。
+
+五、待优化问题
+1. 退款申请未稳定路由到 billing Agent，需要增强退款、退费、账单等关键词及意图权重。
+2. 登录场景出现多 Agent 响应串联，需要检查编排器的候选 Agent 合并逻辑，确保仅返回主 Agent 回复。
+3. 技术排查回答过长，需要限制单次输出长度，并采用“先给关键三步，再根据反馈继续”的交互方式。
+
+六、下一步计划
+1. 优化意图识别与 Agent 路由规则。
+2. 修复多 Agent 响应串联问题。
+3. 启动 Vue 前端并联调 /chat 接口。
+4. 增加测试用例、评测数据和演示脚本，用于秋招项目展示。
+
+七、可解释 RAG 第二阶段验证
+1. 统一业务场景为“订阅制 SaaS 客服”，新增 25 篇模拟政策文档。
+2. 每篇政策包含 source_id、版本、生效日期和适用范围，便于追溯来源。
+3. 知识库已从 6 个片段扩展为 31 个片段，其中包含新增政策与早期兼容演示资料。
+4. /chat 新增 citations 字段，返回本次实际注入模型上下文的来源标题、source_id、片段、相关度与内容预览。
+5. 验证问题：首次购买专业版后多久可以申请退款？
+   结果：通过。响应返回 knowledge_used=true、3 条 citations，并包含 SaaS-REFUND-001（退款政策）。
+6. 发现并修复：中文向量召回会遗漏“退款政策”。现已扩大候选集并加入业务关键词加权，退款检索会优先命中 SaaS-REFUND-001。
+7. 前端已在每条 AI 回复下展示“参考资料”，Vue 生产构建验证通过。
+8. 改造后重新运行 /eval/run：共 8 项、通过 4 项、通过率 50%；意图准确率 100%，回答完整性由 0.5000 提升至 0.5857，帮助性由 0.6214 提升至 0.6571。
+
+八、Skills 治理第三阶段验证
+1. 清理 6 条无 source_id 的旧内置演示资料，知识库现仅保留 25 条订阅制 SaaS 政策。
+2. 三个业务 Skill 均增加版本、负责人、最后修改日期、升级条件和禁止承诺元数据，当前版本为 v1.1。
+3. /skills 接口可返回治理元数据，/skills/reload 已验证可热更新 3 个 Skills。
+4. /chat 新增 skills_used 字段，返回本次实际注入的规则名称、版本、负责人和匹配关键词。
+5. 验证问题：我的银行卡被重复扣款了，请帮我处理。
+   结果：通过。intent=billing、agent_type=billing、skills_used 中包含账单退款处理规范 v1.1，命中关键词为重复扣款。
+6. 前端新增“业务 Skills”只读面板、热更新按钮和回复内“生效规则”展示，Vue 生产构建验证通过。
+
+九、新增高风险场景 Skills 验证
+1. 新增四项 v1.0 规则：账号安全与身份核验、生产故障分级与升级、数据隐私与删除请求、订阅变更与配额管理。
+2. 每项规则均包含适用范围、最小信息收集、标准处置路径、人工升级条件和禁止承诺，避免将易变化的业务事实写入 Skill。
+3. 使用 /skills/reload 热加载后，接口返回共 7 个启用 Skills，且无解析错误。
+4. 验证问题：我发现账号在陌生设备登录，还收到密码重置邮件，应该怎么办？
+   结果：通过。skills_used 命中账号安全与身份核验规范 v1.0，关键词为陌生设备、密码重置；escalated=true。
+5. 验证问题：今天很多用户访问系统都返回 503，核心下单功能无法使用。
+   结果：通过。skills_used 命中生产故障分级与升级规范 v1.0，关键词为 503；escalated=true。
+6. 新增确定性升级判定：当已命中 Skill 的 escalation_keywords 时，/chat 将返回 escalated=true，避免高风险升级只依赖模型判断。
+
+十、人工升级工单第四阶段验证
+1. /chat 响应新增 handoff_ticket：包含 ticket_id、升级原因、原因说明、优先级、脱敏问题摘要、创建时间和知识来源 ID。
+2. 初始版本仅生成 pending_human_review 待处理单，不伪造外部工单、邮件或人工客服已接收。
+3. 新增原因枚举：payment_dispute、account_security、tool_failure、privacy_request、user_requested_human、abusive_or_complaint、low_grounding。
+4. 验证问题：我的银行卡被重复扣款了，请马上转人工处理。
+   结果：通过。escalated=true，生成 payment_dispute、P1 工单，包含 3 条知识来源 ID。
+5. 验证问题：我发现账号在陌生设备登录，还收到密码重置邮件。
+   结果：通过。escalated=true，生成 account_security、P1 工单，包含 3 条知识来源 ID。
+6. 前端在 AI 回复下新增“人工升级工单（演示）”卡片，展示原因、优先级、摘要和工单号；Vue 生产构建验证通过。
+
+十一、内置人工工单中心第五阶段验证
+1. 新增 SQLite 持久化存储 data/handoffs/tickets.db，并通过 Docker Compose 挂载到宿主机目录。
+2. /chat 对高风险请求自动创建真实内置工单，delivery=internal_ticket_center，初始状态为 open。
+3. 新增 GET /handoffs 查询接口与 PATCH /handoffs/{ticket_id} 状态更新接口，支持 open、in_progress、resolved、closed 四种状态。
+4. 验证重复扣款请求创建工单 EM-611532BEDE：创建状态 open，随后成功更新为 in_progress，并保留 3 条知识来源 ID。
+5. 重启 sakikomind 应用后再次查询，工单仍为 in_progress，验证本地 SQLite 工单数据持久化成功。
+6. 前端新增“人工工单中心”，可刷新工单队列并更新处理状态；聊天回复卡片改为“人工升级工单”，不再标注演示。
+
+十二、自动化回归与评测快照第六阶段验证
+1. 新增 tests/test_skill_loader.py、tests/test_handoff_store.py、tests/test_evaluator_snapshot.py，均使用 Python 内置 unittest，不依赖真实模型或外部网络。
+2. 执行 docker compose exec -T sakikomind python -m unittest discover -s tests -v：3 项通过。
+3. /eval/run 现在每次除覆盖 data/eval/baseline.json 外，还会自动保存带微秒时间戳的 JSON 快照。
+4. 本次快照：data/eval/snapshots/eval-20260807T155732962844.json。
+5. 本次端到端评测：8 项中通过 3 项，通过率 37.5%；意图识别准确率 100%，相关性 0.6357，准确性 0.6286，完整性 0.5714，帮助性 0.6071。
+6. 与前一份基线相比，LLM Judge 的相关性、准确性和帮助性出现波动；已记录为回归信号，后续需要用更多人工标注的固定样本确认原因，不能仅凭单次模型评分下结论。
+
+十三、固定评测集与失败归因第七阶段验证
+1. 新增 data/eval/fixed_cases.json：20 条版本化意图标注样本，覆盖 query、complaint、request、greeting、escalation、technical、billing、account、feedback、other 十类意图。
+2. 新增失败摘要：/eval/run 会分别输出意图误判、真实低分对话和 LLM Judge 未定论，便于定位而不是只看总分。
+3. 首次扩充评测发现 4 条“误判”，复核后均为样本标签与系统意图定义不一致，已修正为账户管理、操作请求、账务和查询等符合现有路由的标签。
+4. 独立 20 条意图检查得到 19/20；唯一剩余问题为“套餐降级”的 account/request 语义边界，已用语义明确的“取消订单”请求替换。
+5. LLM Judge 对空响应或不完整 JSON 最多重试 3 次；三次失败会记为未定论，不再进入质量均分或通过率。
+6. 最近一次完整端到端评测：8 个结果项中通过 7 项、通过率 87.5%；20 条意图样本准确率 90%；1 条 Judge 未定论。后续容器稳定时可用同一批修正后的样本再次生成最终基线。
+7. 当前离线回归测试共 13 项，全部通过。
+
+十四、可靠性与可观测性第八阶段验证
+1. 每个 HTTP 请求会生成或回传 trace_id，并在响应头 X-Trace-ID、/chat 响应、阶段日志和人工工单中形成同一条可检索链路。
+2. /metrics 现提供 sakikomind_http_requests_total、sakikomind_http_request_duration_seconds、sakikomind_chat_stage_duration_seconds、sakikomind_chat_stage_failures_total、sakikomind_profile_update_attempts_total 和 sakikomind_profile_update_failures_total 等 Prometheus 指标。
+3. 对话主链路已按 memory_read、rag、agent、memory_write 分阶段记录成功/失败耗时；指标只使用固定阶段名和路由模板，避免把用户 ID、工单号等动态值写入标签。
+4. RAG 的查询改写和结果重排均设置 RAG_LLM_TIMEOUT_S 超时（默认 8 秒）；超时时查询改写保留原问题，重排改为按确定性分数排序，不阻塞整个聊天请求。
+5. 监控告警改为同一指标异常期间只生成一条；数值恢复后自动标记 resolved 并记录 resolved_at，/monitor 同时返回 active_alerts 与 recent_alerts。
+6. 异步用户画像更新在 HTTP 响应后执行，失败会记录日志和 Prometheus 指标，并最多重试 2 次，因此不会拖慢本次客服回答。
+7. 验收环境：Docker Compose 全部五个服务 healthy/running；/health 返回 status=ok；/monitor 返回 agent_stats、tool_stats、active_alerts、recent_alerts、suggestions；/metrics 可发现上述指标并回传 X-Trace-ID。
+8. 新增 tests/test_monitor_alerts.py、tests/test_rag_timeouts.py、tests/test_profile_update.py，并扩展 tests/test_api_tracing.py。执行 docker compose exec -T sakikomind python -m unittest discover -s tests -v：27 项全部通过。
+
+十五、云端部署准备第九阶段验证
+1. 新增 docker-compose.production.yml，作为本地 docker-compose.yml 的覆盖配置；生产合并配置不影响现有本地开发启动方式。
+2. 生产覆盖配置隐藏 Redis、ChromaDB 与 SakikoMind API 的宿主机端口；Prometheus 仅绑定 127.0.0.1:9090，公网仅保留 Nginx 80 端口。
+3. 新增 CORS_ALLOWED_ORIGINS 环境变量，支持用逗号配置前端域名白名单；本地空值仍兼容通配符，生产环境由云端部署指南要求配置实际 HTTPS 域名。
+4. 新增 云端部署指南.md，包含服务器规格、端口/防火墙原则、随机密码、HTTPS、SSH 隧道、持久化备份和上线验收步骤。
+5. 执行 docker compose -f docker-compose.yml -f docker-compose.production.yml config --quiet 通过；解析结果验证端口暴露为 redis=0、chromadb=0、sakikomind=0、prometheus=9090、nginx=80。
+6. 新增 tests/test_cors_config.py；重建本地 SakikoMind 后 /health 返回 status=ok，离线回归测试共 29 项全部通过。
+7. 本阶段仅完成云端发布准备，尚未连接真实云服务器、域名或 HTTPS 证书；实际发布需在选定云厂商后执行部署指南。

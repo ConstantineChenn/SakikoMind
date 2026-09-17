@@ -205,8 +205,7 @@ Open the Vite URL (usually `http://127.0.0.1:5173`) and start a customer-service
 | `GET /monitor` / `GET /metrics` | Runtime monitoring and Prometheus metrics |
 | `POST /eval/run` | Run end-to-end evaluation |
 
-See [Swagger API Docs](http://120.26.144.124/docs) for interactive requests.  
-完整部署、排障与 HTTPS 建议请参考 [云端部署指南](SakikoMind/云端部署指南.md)。
+See [Swagger API Docs](http://120.26.144.124/docs) for interactive request
 
 ## Security Notes | 安全边界
 

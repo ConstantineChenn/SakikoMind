@@ -8,25 +8,59 @@ const assistant = (page) => page.locator('.message.assistant')
 const visibleFeedback = (page, text) => page.getByText(text, { exact: true }).filter({ visible: true })
 const file = { name: 'refund.md', mimeType: 'text/markdown', buffer: Buffer.from('# 退款政策\n审核后原路退回。') }
 
+async function assertWorkspaceSpacing(page, panel, testInfo, label) {
+  const geometry = await page.evaluate((selector) => {
+    const content = document.querySelector(selector).getBoundingClientRect()
+    const header = document.querySelector('.workspace-header').getBoundingClientRect()
+    const feedback = document.querySelector('.workspace-feedback')
+    const notices = [...feedback.querySelectorAll('p')]
+      .filter((node) => node.getClientRects().length > 0)
+      .map((node) => node.getBoundingClientRect())
+    const lastNotice = notices.at(-1)
+    return {
+      contentGap: content.top - (lastNotice?.bottom ?? header.bottom),
+      feedbackUnusedHeight: notices.length
+        ? feedback.getBoundingClientRect().height - (lastNotice.bottom - notices[0].top)
+        : 0,
+      feedbackMessageCount: notices.length
+    }
+  }, panel)
+  await testInfo.attach(`workspace-layout-${label}`, { body: JSON.stringify(geometry, null, 2), contentType: 'application/json' })
+  expect(geometry.contentGap, 'Business content must follow its header or feedback without a large blank band').toBeLessThanOrEqual(40)
+  expect(geometry.contentGap, 'Business content must not overlap feedback').toBeGreaterThanOrEqual(-1)
+  expect(geometry.feedbackUnusedHeight, 'Feedback must size to its messages instead of consuming the content area').toBeLessThanOrEqual(24)
+}
+
 test.describe('Web UI — deterministic API mocks, not live model evaluation', () => {
   test.afterEach(async ({ api }) => {
     expect(api.pageErrors, 'The UI must not produce uncaught browser exceptions').toEqual([])
   })
 
-  test('UI01 navigates all five workspaces without mixing visible panels', async ({ page, api }) => {
-    await api.open()
-    for (const [tab, title, panel] of [
-      ['知识库', '知识库管理', '.workspace-knowledge'],
-      ['工单', '人工工单中心', '.workspace-handoffs'],
-      ['监控', '运行监控中心', '.monitor-workspace'],
-      ['设置', '系统设置与 Skill 治理', '.settings-workspace'],
-      ['对话', '智能客服工作台', '.chat-panel']
-    ]) {
-      await navigate(page, tab)
-      await expect(page.locator('.workspace-header h2')).toHaveText(title)
-      await expect(page.locator(panel)).toBeVisible()
-      await expect(page.locator('.workspace-nav button.active')).toHaveText(tab)
-    }
+  test('UI01 navigates all five workspaces with compact empty and populated feedback', async ({ page, api }, testInfo) => {
+    const healthGate = deferred()
+    api.override('GET', '/health', async ({ fulfill }) => { await healthGate.promise; await fulfill({ status: 'ok' }) })
+    try {
+      await api.open()
+      for (const phase of ['empty', 'populated']) {
+        if (phase === 'populated') {
+          healthGate.resolve()
+          await expect(page.getByRole('status')).toHaveText('健康检查已完成')
+        } else await expect(page.locator('.workspace-feedback')).toBeHidden()
+        for (const [tab, title, panel] of [
+          ['知识库', '知识库管理', '.workspace-knowledge'],
+          ['工单', '人工工单中心', '.workspace-handoffs'],
+          ['监控', '运行监控中心', '.monitor-workspace'],
+          ['设置', '系统设置与 Skill 治理', '.settings-workspace'],
+          ['对话', '智能客服工作台', '.chat-panel']
+        ]) {
+          await navigate(page, tab)
+          await expect(page.locator('.workspace-header h2')).toHaveText(title)
+          await expect(page.locator(panel)).toBeVisible()
+          await expect(page.locator('.workspace-nav button.active')).toHaveText(tab)
+          await assertWorkspaceSpacing(page, panel, testInfo, `${phase}-${tab}`)
+        }
+      }
+    } finally { healthGate.resolve() }
   })
 
   test('UI02 empty or whitespace questions never send a chat request', async ({ page, api }) => {
@@ -409,13 +443,14 @@ test.describe('Web UI — deterministic API mocks, not live model evaluation', (
     expect(api.calls('POST', '/chat')[0].body.user_id).toBe('persistent-user')
   })
 
-  test('UI35 narrow screen keeps navigation, composer and management panels within the viewport', async ({ page, api }) => {
+  test('UI35 narrow screen keeps navigation, composer and management panels within the viewport', async ({ page, api }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await api.open()
-    for (const tab of ['对话', '知识库', '工单', '监控', '设置']) {
+    for (const [tab, panel] of [['对话', '.chat-panel'], ['知识库', '.workspace-knowledge'], ['工单', '.workspace-handoffs'], ['监控', '.monitor-workspace'], ['设置', '.settings-workspace']]) {
       await navigate(page, tab)
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
       expect(overflow, `${tab} should not require page-level horizontal scrolling`).toBeLessThanOrEqual(1)
+      await assertWorkspaceSpacing(page, panel, testInfo, `narrow-${tab}`)
     }
     await navigate(page, '对话')
     await send(page, '窄屏浏览器中的中文问题')

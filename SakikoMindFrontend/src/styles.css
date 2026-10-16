@@ -361,14 +361,27 @@ pre {
 }
 
 .workspace {
-  display: grid;
-  grid-template-rows: auto minmax(420px, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   width: min(1680px, 100%);
   margin: 0 auto;
   padding: 22px;
   min-width: 0;
   flex: 1;
+}
+
+.workspace > .workspace-header,
+.workspace > .workspace-feedback {
+  flex: 0 0 auto;
+}
+
+.workspace > .chat-panel,
+.workspace > .tools-grid,
+.workspace > .monitor-workspace,
+.workspace > .settings-workspace {
+  flex: 1 0 auto;
+  min-width: 0;
 }
 
 .workspace-header {

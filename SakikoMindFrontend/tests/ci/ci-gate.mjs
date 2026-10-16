@@ -5,7 +5,7 @@ import path from 'node:path'
 // CI DRILL ONLY: this deliberately fails the first rehearsal commit.
 // The recovery commit changes this literal to false after the failed run and
 // its artifacts have been observed. This is not a SakikoMind product defect.
-const injectedFailure = true
+const injectedFailure = false
 
 const report = {
   schemaVersion: 1,

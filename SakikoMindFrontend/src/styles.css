@@ -73,19 +73,22 @@ textarea:focus {
 }
 
 .app-shell {
-  display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
 }
 
-.sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
+.site-header {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 86px;
   background: rgba(248, 251, 254, 0.82);
-  border-right: 1px solid rgba(197, 209, 224, 0.82);
-  padding: 22px;
-  overflow-y: auto;
+  border-bottom: 1px solid rgba(197, 209, 224, 0.82);
+  padding: 12px 22px;
   backdrop-filter: blur(18px);
 }
 
@@ -94,6 +97,13 @@ textarea:focus {
   align-items: center;
   gap: 13px;
   min-height: 78px;
+}
+
+.settings-shortcut {
+  min-height: 38px;
+  background: #e6f6f4;
+  color: #0f7678;
+  box-shadow: none;
 }
 
 .brand-avatar {
@@ -354,8 +364,11 @@ pre {
   display: grid;
   grid-template-rows: auto minmax(420px, 1fr) auto;
   gap: 18px;
+  width: min(1680px, 100%);
+  margin: 0 auto;
   padding: 22px;
   min-width: 0;
+  flex: 1;
 }
 
 .workspace-header {
@@ -858,6 +871,59 @@ pre {
   gap: 18px;
 }
 
+.settings-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.72fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.settings-skills-panel {
+  grid-column: 1 / -1;
+}
+
+.settings-skills-panel .skill-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-height: 520px;
+  padding-right: 6px;
+  overflow-y: auto;
+}
+
+.site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 64px;
+  padding: 14px 22px;
+  border-top: 1px solid rgba(184, 202, 219, 0.92);
+  background:
+    linear-gradient(90deg, rgba(23, 105, 224, 0.08), rgba(15, 139, 141, 0.12), rgba(125, 92, 198, 0.08)),
+    rgba(248, 251, 254, 0.92);
+  color: #637386;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.site-footer span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.site-footer a {
+  color: #1769e0;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  text-decoration: underline;
+}
+
+.site-footer small {
+  color: #8492a3;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -955,6 +1021,28 @@ pre {
   line-height: 1.5;
 }
 
+.workspace-feedback:empty {
+  display: none;
+}
+
+.workspace-feedback {
+  padding: 0 16px;
+  overflow-wrap: anywhere;
+}
+
+.workspace-feedback p {
+  margin: 6px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #edf4ff;
+  color: #274e78;
+}
+
+.workspace-feedback [role='alert'] {
+  background: #fff2df;
+  color: #7a4300;
+}
+
 @media (max-width: 1320px) and (min-width: 961px) {
   .workspace-header {
     align-items: flex-start;
@@ -968,15 +1056,9 @@ pre {
 }
 
 @media (max-width: 960px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: static;
-    height: auto;
-    border-right: 0;
-    border-bottom: 1px solid rgba(197, 209, 224, 0.82);
+  .site-header {
+    min-height: 72px;
+    padding: 9px 14px;
   }
 
   .workspace-header {
@@ -988,8 +1070,19 @@ pre {
   .monitor-grid,
   .metric-grid,
   .starter-benefits,
-  .composer {
+  .composer,
+  .settings-workspace,
+  .settings-skills-panel .skill-list {
     grid-template-columns: 1fr;
+  }
+
+  .workspace {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .chat-panel {
+    min-height: calc(100dvh - 218px);
   }
 
   .composer button {
@@ -1003,5 +1096,66 @@ pre {
 
   .monitor-row {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .site-footer {
+    flex-wrap: wrap;
+    min-height: 72px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 560px) {
+  .brand-avatar {
+    width: 40px;
+    height: 40px;
+    flex-basis: 40px;
+  }
+
+  .brand h1 {
+    font-size: 19px;
+  }
+
+  .brand p,
+  .site-footer small {
+    display: none;
+  }
+
+  .settings-shortcut {
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .workspace-header {
+    padding: 15px;
+  }
+
+  .workspace-header h2 {
+    font-size: 20px;
+  }
+
+  .workspace-header p {
+    font-size: 13px;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .workspace-nav {
+    order: 3;
+  }
+
+  .messages {
+    padding: 13px;
+  }
+
+  .empty-state {
+    min-height: 250px;
+  }
+
+  .demo-library {
+    align-items: flex-start;
   }
 }

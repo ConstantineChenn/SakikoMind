@@ -1,6 +1,6 @@
 <template>
   <main class="app-shell">
-    <aside class="sidebar">
+    <header class="site-header">
       <section class="brand">
         <img class="brand-avatar" src="./assets/sakiko-avatar.png" alt="Sakiko 客服头像" />
         <div>
@@ -8,71 +8,10 @@
           <p>可观测、可追溯的企业智能客服 Agent</p>
         </div>
       </section>
-
-      <section class="panel">
-        <div class="panel-heading">
-          <h2>服务配置</h2>
-          <span class="pill">Python FastAPI</span>
-        </div>
-        <label>
-          <span>API 地址</span>
-          <input v-model="settings.apiBaseUrl" @change="persist" placeholder="http://localhost:8000" />
-        </label>
-        <label>
-          <span>用户 ID</span>
-          <input v-model="settings.userId" @change="persist" placeholder="u1001" />
-        </label>
-        <label>
-          <span>会话 ID</span>
-          <input v-model="settings.conversationId" @change="persist" placeholder="自动生成" />
-        </label>
-
-        <div class="actions">
-          <button @click="checkHealth">健康检查</button>
-          <button @click="loadStats">刷新状态</button>
-        </div>
-      </section>
-
-      <section class="panel status-panel">
-        <div class="panel-heading">
-          <h2>状态</h2>
-          <span :class="['status-dot', healthOk ? 'online' : 'offline']"></span>
-        </div>
-        <dl>
-          <div>
-            <dt>服务端</dt>
-            <dd>Python FastAPI</dd>
-          </div>
-          <div>
-            <dt>健康状态</dt>
-            <dd :class="healthOk ? 'ok' : 'muted'">{{ healthLabel }}</dd>
-          </div>
-          <div>
-            <dt>知识片段</dt>
-            <dd>{{ knowledgeCount }}</dd>
-          </div>
-        </dl>
-        <p v-if="statusText" class="status-detail">{{ statusText }}</p>
-      </section>
-
-      <section class="panel skills-panel">
-        <div class="panel-heading">
-          <h2>业务 Skills</h2>
-          <span class="pill soft">{{ skills.length }}</span>
-        </div>
-        <p>运行时加载的业务处理规范。</p>
-        <div class="actions">
-          <button @click="refreshSkills" :disabled="busy">热更新 Skills</button>
-        </div>
-        <div class="skill-list">
-          <article v-for="skill in skills" :key="skill.path" class="skill-item">
-            <strong>{{ skill.name }}</strong>
-            <span>{{ skill.version }} · {{ skill.owner || '未指定负责人' }}</span>
-            <small>{{ skill.agents.join(', ') || 'all' }} · {{ skill.keywords.slice(0, 4).join('、') }}</small>
-          </article>
-        </div>
-      </section>
-    </aside>
+      <button class="settings-shortcut" type="button" @click="activeWorkspace = 'settings'">
+        系统设置
+      </button>
+    </header>
 
     <section class="workspace">
       <header class="workspace-header">
@@ -87,6 +26,7 @@
               v-for="item in workspaceTabs"
               :key="item.id"
               :class="{ active: activeWorkspace === item.id }"
+              :aria-pressed="activeWorkspace === item.id"
               @click="activeWorkspace = item.id"
             >
               {{ item.label }}
@@ -97,12 +37,18 @@
             class="secondary-button"
             type="button"
             @click="startNewConversation"
+            :disabled="operationBusy"
           >
             新建会话
           </button>
           <a :href="docsUrl" target="_blank" rel="noreferrer">API 文档</a>
         </div>
       </header>
+
+      <div class="workspace-feedback" aria-live="polite">
+        <p v-if="statusText" role="status">{{ statusText }}</p>
+        <p v-if="statsError" role="alert">{{ statsError }}</p>
+      </div>
 
       <section v-show="activeWorkspace === 'chat'" class="chat-panel">
         <div class="messages" ref="messageList">
@@ -166,7 +112,7 @@
               </article>
             </section>
           </div>
-          <div v-if="busy" class="assistant-thinking">
+          <div v-if="chatBusy" class="assistant-thinking">
             <span class="thinking-dot"></span>
             SakikoMind 正在检索知识、路由 Agent 并生成回复…
           </div>
@@ -189,8 +135,8 @@
         </section>
 
         <form class="composer" @submit.prevent="sendMessage">
-          <textarea v-model="draft" rows="3" placeholder="输入问题，例如：我想申请退款，订单号是 #12345"></textarea>
-          <button :disabled="busy || !draft.trim()">{{ busy ? '发送中' : '发送' }}</button>
+          <textarea v-model="draft" aria-label="客服问题" rows="3" placeholder="输入问题，例如：我想申请退款，订单号是 #12345"></textarea>
+          <button :disabled="busy || !draft.trim()">{{ chatBusy ? '发送中' : '发送' }}</button>
         </form>
       </section>
 
@@ -204,7 +150,7 @@
             <span class="pill soft">RAG</span>
           </div>
           <div class="inline-form">
-            <input v-model="searchQuery" placeholder="退款多久能到账" />
+            <input v-model="searchQuery" aria-label="知识库检索词" placeholder="退款多久能到账" />
             <button @click="searchKnowledge" :disabled="busy || !searchQuery.trim()">检索</button>
           </div>
           <div class="result-list">
@@ -233,7 +179,7 @@
             <button @click="submitKnowledge" :disabled="busy || !docTitle.trim() || !docContent.trim()">添加文档</button>
             <label class="file-button">
               上传文件
-              <input type="file" accept=".txt,.md,.json" @change="handleUpload" />
+              <input type="file" accept=".txt,.md,.json" :disabled="busy" @change="handleUpload" />
             </label>
           </div>
         </article>
@@ -264,7 +210,7 @@
                 <select
                   :value="ticket.status"
                   :disabled="busy"
-                  @change="changeHandoffStatus(ticket, $event.target.value)"
+                  @change="changeHandoffStatus(ticket, $event)"
                 >
                   <option value="open">待处理</option>
                   <option value="in_progress">处理中</option>
@@ -365,12 +311,96 @@
           </article>
         </section>
       </section>
+
+      <section v-show="activeWorkspace === 'settings'" class="settings-workspace">
+        <article class="tool-panel service-settings-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">Connection</span>
+              <h2>服务配置</h2>
+            </div>
+            <span class="pill">Python FastAPI</span>
+          </div>
+          <p class="panel-tip">配置本次演示连接、用户与会话标识。修改后会自动保存在当前浏览器。</p>
+          <label>
+            <span>API 地址</span>
+            <input v-model="settings.apiBaseUrl" :disabled="busy" @change="persist" placeholder="http://localhost:8000" />
+          </label>
+          <label>
+            <span>用户 ID</span>
+            <input v-model="settings.userId" :disabled="busy" @change="persist" placeholder="u1001" />
+          </label>
+          <label>
+            <span>会话 ID</span>
+            <input v-model="settings.conversationId" :disabled="busy" @change="persist" placeholder="自动生成" />
+          </label>
+          <div class="actions">
+            <button @click="checkHealth">健康检查</button>
+            <button @click="loadStats">刷新状态</button>
+          </div>
+        </article>
+
+        <article class="tool-panel status-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">Runtime</span>
+              <h2>服务状态</h2>
+            </div>
+            <span :class="['status-dot', healthOk ? 'online' : 'offline']"></span>
+          </div>
+          <dl>
+            <div>
+              <dt>服务端</dt>
+              <dd>Python FastAPI</dd>
+            </div>
+            <div>
+              <dt>健康状态</dt>
+              <dd :class="healthOk ? 'ok' : 'muted'">{{ healthLabel }}</dd>
+            </div>
+            <div>
+              <dt>知识片段</dt>
+              <dd>{{ knowledgeCount }}</dd>
+            </div>
+            <div>
+              <dt>业务 Skills</dt>
+              <dd>{{ skills.length }}</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="tool-panel skills-panel settings-skills-panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">Governance</span>
+              <h2>业务 Skills</h2>
+            </div>
+            <div class="panel-actions">
+              <span class="pill soft">{{ skills.length }}</span>
+              <button @click="refreshSkills" :disabled="busy">热更新</button>
+            </div>
+          </div>
+          <p>集中查看运行时加载的业务规范、版本、负责人和适用 Agent。</p>
+          <div class="skill-list">
+            <article v-for="skill in skills" :key="skill.path" class="skill-item">
+              <strong>{{ skill.name }}</strong>
+              <span>{{ skill.version }} · {{ skill.owner || '未指定负责人' }}</span>
+              <small>{{ skill.agents.join(', ') || 'all' }} · {{ skill.keywords.slice(0, 4).join('、') }}</small>
+            </article>
+          </div>
+        </article>
+      </section>
     </section>
+
+    <footer class="site-footer">
+      <span>网站贡献者</span>
+      <a href="https://space.bilibili.com/288645075" target="_blank" rel="noreferrer">@君士坦丁堡堡</a>
+      <small>感谢参与 SakikoMind 的设计、测试与持续完善</small>
+    </footer>
   </main>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   addKnowledge,
   backendMeta,
@@ -391,10 +421,15 @@ import {
 const settings = reactive(createInitialSettings())
 const messages = ref([])
 const draft = ref('')
-const busy = ref(false)
+const operationBusy = ref(false)
+const chatBusy = ref(false)
+const busy = computed(() => operationBusy.value || chatBusy.value)
+let chatGeneration = 0
+let chatController = null
 const healthOk = ref(false)
 const healthLabel = ref('未检查')
 const statusText = ref('')
+const statsError = ref('')
 const knowledgeCount = ref('-')
 const skills = ref([])
 const searchQuery = ref('退款多久能到账')
@@ -416,7 +451,8 @@ const workspaceTabs = [
   { id: 'chat', label: '对话' },
   { id: 'knowledge', label: '知识库' },
   { id: 'handoffs', label: '工单' },
-  { id: 'monitor', label: '监控' }
+  { id: 'monitor', label: '监控' },
+  { id: 'settings', label: '设置' }
 ]
 const demoScenarios = [
   {
@@ -455,6 +491,10 @@ const workspacePresentation = computed(() => ({
   monitor: {
     title: '运行监控中心',
     description: '观察 Agent、工具、告警与优化建议'
+  },
+  settings: {
+    title: '系统设置与 Skill 治理',
+    description: '集中管理服务连接、运行状态与业务规范'
   }
 }[activeWorkspace.value]))
 const agentStats = computed(() => toMonitorEntries(monitorData.value.agent_stats))
@@ -472,18 +512,25 @@ onMounted(() => {
   refreshWorkspace()
 })
 
+onBeforeUnmount(() => chatController?.abort())
+
 function persist() {
   saveSettings(settings)
 }
 
 async function sendMessage() {
   const content = draft.value.trim()
-  if (!content) return
+  if (!content || busy.value) return
+  const generation = ++chatGeneration
+  const controller = new AbortController()
+  chatController = controller
+  const requestSettings = { ...settings }
   messages.value.push({ id: createClientId(), role: 'user', content })
   draft.value = ''
-  busy.value = true
+  chatBusy.value = true
   try {
-    const response = await requestChat(settings, content)
+    const response = await requestChat(requestSettings, content, { signal: controller.signal })
+    if (generation !== chatGeneration) return
     if (response.conversationId && !settings.conversationId) {
       settings.conversationId = response.conversationId
       persist()
@@ -507,6 +554,7 @@ async function sendMessage() {
     })
     if (response.handoffTicket) await loadHandoffs()
   } catch (error) {
+    if (generation !== chatGeneration) return
     messages.value.push({
       id: createClientId(),
       role: 'assistant',
@@ -514,9 +562,12 @@ async function sendMessage() {
       meta: '请求失败'
     })
   } finally {
-    busy.value = false
-    await nextTick()
-    messageList.value?.scrollTo({ top: messageList.value.scrollHeight, behavior: 'smooth' })
+    if (generation === chatGeneration) {
+      chatController = null
+      chatBusy.value = false
+      await nextTick()
+      messageList.value?.scrollTo({ top: messageList.value.scrollHeight, behavior: 'smooth' })
+    }
   }
 }
 
@@ -541,21 +592,22 @@ async function checkHealth() {
 }
 
 async function loadStats() {
-  try {
-    const [stats, monitor] = await Promise.allSettled([
-      requestKnowledgeStats(settings),
-      requestMonitor(settings)
-    ])
-    if (stats.status === 'fulfilled') {
-      knowledgeCount.value = stats.value.total_chunks ?? stats.value.totalChunks ?? '-'
-    }
-    if (monitor.status === 'fulfilled') {
-      monitorData.value = monitor.value
-      statusText.value = '运行状态已同步'
-    }
-  } catch (error) {
-    statusText.value = error.message
+  const [stats, monitor] = await Promise.allSettled([
+    requestKnowledgeStats(settings),
+    requestMonitor(settings)
+  ])
+  const failures = []
+  if (stats.status === 'fulfilled') {
+    knowledgeCount.value = stats.value.total_chunks ?? stats.value.totalChunks ?? '-'
+  } else {
+    failures.push(`知识统计刷新失败：${stats.reason.message}`)
   }
+  if (monitor.status === 'fulfilled') {
+    monitorData.value = monitor.value
+  } else {
+    failures.push(`监控刷新失败：${monitor.reason.message}`)
+  }
+  statsError.value = failures.length ? `${failures.join('；')}。失败部分保留上次数据，可能已过期。` : ''
 }
 
 async function loadSkills() {
@@ -576,8 +628,14 @@ async function loadHandoffs() {
   }
 }
 
-async function changeHandoffStatus(ticket, status) {
-  busy.value = true
+async function changeHandoffStatus(ticket, event) {
+  if (busy.value) {
+    event.target.value = ticket.status
+    return
+  }
+  const status = event.target.value
+  const previousStatus = ticket.status
+  operationBusy.value = true
   try {
     const updated = await updateHandoffStatus(settings, ticket.ticket_id, status)
     handoffs.value = handoffs.value
@@ -586,14 +644,16 @@ async function changeHandoffStatus(ticket, status) {
     statusText.value = `工单 ${updated.ticket_id} 已更新为 ${updated.status}`
   } catch (error) {
     statusText.value = error.message
+    event.target.value = previousStatus
     await loadHandoffs()
   } finally {
-    busy.value = false
+    operationBusy.value = false
   }
 }
 
 async function refreshSkills() {
-  busy.value = true
+  if (busy.value) return
+  operationBusy.value = true
   try {
     const data = await reloadSkills(settings)
     skills.value = data.skills || []
@@ -601,50 +661,56 @@ async function refreshSkills() {
   } catch (error) {
     statusText.value = error.message
   } finally {
-    busy.value = false
+    operationBusy.value = false
   }
 }
 
 async function searchKnowledge() {
-  busy.value = true
+  if (busy.value || !searchQuery.value.trim()) return
+  operationBusy.value = true
   try {
-    const data = await requestSearch(settings, searchQuery.value, 5)
+    const data = await requestSearch(settings, searchQuery.value.trim(), 5)
     searchResults.value = data.results || []
+    statusText.value = `检索完成，共 ${searchResults.value.length} 条结果`
   } catch (error) {
+    searchResults.value = []
     statusText.value = error.message
   } finally {
-    busy.value = false
+    operationBusy.value = false
   }
 }
 
 async function submitKnowledge() {
-  busy.value = true
+  if (busy.value || !docTitle.value.trim() || !docContent.value.trim()) return
+  operationBusy.value = true
   try {
     const data = await addKnowledge(settings, [
       { title: docTitle.value.trim(), content: docContent.value.trim() }
     ])
-    statusText.value = `已导入 ${data.added ?? data.count ?? 1} 条知识`
     await loadStats()
+    const added = data.added_chunks ?? data.added ?? data.count
+    statusText.value = added == null ? '知识导入完成' : `已导入 ${added} 条知识`
   } catch (error) {
     statusText.value = error.message
   } finally {
-    busy.value = false
+    operationBusy.value = false
   }
 }
 
 async function handleUpload(event) {
   const file = event.target.files?.[0]
   event.target.value = ''
-  if (!file) return
-  busy.value = true
+  if (!file || busy.value) return
+  operationBusy.value = true
   try {
     const data = await uploadKnowledge(settings, file)
-    statusText.value = `文件导入完成：${data.added ?? data.count ?? 0} 条知识`
     await loadStats()
+    const added = data.added_chunks ?? data.added ?? data.count
+    statusText.value = added == null ? '文件导入完成' : `文件导入完成：${added} 条知识`
   } catch (error) {
     statusText.value = error.message
   } finally {
-    busy.value = false
+    operationBusy.value = false
   }
 }
 
@@ -664,6 +730,11 @@ function applyDemo(scenario) {
 }
 
 function startNewConversation() {
+  if (operationBusy.value) return
+  chatGeneration += 1
+  chatController?.abort()
+  chatController = null
+  chatBusy.value = false
   messages.value = []
   draft.value = ''
   settings.conversationId = ''

@@ -1,0 +1,60 @@
+name: Web regression
+
+on:
+  push:
+    branches:
+      - 'codex/web-regression-*'
+    paths:
+      - 'SakikoMindFrontend/**'
+      - '.github/workflows/web-tests.yml'
+  pull_request:
+    paths:
+      - 'SakikoMindFrontend/**'
+      - '.github/workflows/web-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  browser-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: SakikoMindFrontend
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: SakikoMindFrontend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Build
+        run: npm run build
+      - name: Run 65 deterministic checks across three browser engines
+        run: npx playwright test ui.spec.js adapter.spec.js
+        env:
+          CI: '1'
+          PLAYWRIGHT_WORKERS: '2'
+      - name: CI drill only - verify failure signal independently of product tests
+        if: ${{ !cancelled() }}
+        run: node tests/ci/ci-gate.mjs
+      - name: Preserve reports including failures
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: web-regression-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            SakikoMindFrontend/playwright-report
+            SakikoMindFrontend/test-results
+          retention-days: 14
+          if-no-files-found: error

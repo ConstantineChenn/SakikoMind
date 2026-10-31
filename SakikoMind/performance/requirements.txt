@@ -1,0 +1,4 @@
+# API regression plus the local HTTP server used by sqlite_write_comparison.py.
+-r ../testing/api_regression/requirements.txt
+uvicorn==0.32.1
+click==8.5.0

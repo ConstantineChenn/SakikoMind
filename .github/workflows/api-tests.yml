@@ -1,0 +1,90 @@
+name: After-sales API regression
+
+on:
+  push:
+    paths:
+      - 'SakikoMind/api/aftersales.py'
+      - 'SakikoMind/core/aftersales_*.py'
+      - 'SakikoMind/testing/api_regression/**'
+      - 'SakikoMind/tests/test_aftersales_write_admission.py'
+      - 'SakikoMind/tests/test_sqlite_write_comparison.py'
+      - 'SakikoMind/performance/sqlite_write_comparison.py'
+      - 'SakikoMind/performance/requirements.txt'
+      - '.github/workflows/api-tests.yml'
+  pull_request:
+    paths:
+      - 'SakikoMind/api/aftersales.py'
+      - 'SakikoMind/core/aftersales_*.py'
+      - 'SakikoMind/testing/api_regression/**'
+      - 'SakikoMind/tests/test_aftersales_write_admission.py'
+      - 'SakikoMind/tests/test_sqlite_write_comparison.py'
+      - 'SakikoMind/performance/sqlite_write_comparison.py'
+      - 'SakikoMind/performance/requirements.txt'
+      - '.github/workflows/api-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aftersales-api-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  api-regression:
+    name: After-sales API regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: SakikoMind/testing/api_regression
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            SakikoMind/testing/api_regression/requirements.txt
+            SakikoMind/testing/api_regression/requirements.lock
+            SakikoMind/performance/requirements.txt
+      - name: Install isolated API and local runner dependencies
+        working-directory: SakikoMind
+        run: python -m pip install -r performance/requirements.txt
+      - name: Run critical business smoke tests against this checkout
+        run: python -X utf8 -m pytest -q -m smoke --junitxml=reports/smoke.xml
+      - name: Run complete API contracts against this checkout
+        if: ${{ !cancelled() }}
+        run: python -X utf8 -m pytest -q --junitxml=reports/api.xml
+      - name: Verify bounded write admission and performance state oracle
+        if: ${{ !cancelled() }}
+        working-directory: SakikoMind
+        run: >-
+          python -X utf8 -m pytest -q
+          tests/test_aftersales_write_admission.py tests/test_sqlite_write_comparison.py
+          --junitxml=testing/api_regression/reports/write-admission.xml
+      - name: Verify failure diagnostics redaction and database cleanup
+        if: ${{ !cancelled() }}
+        run: python -X utf8 tools/verify_failure_report.py
+      - name: Smoke-test the loopback runner (correctness only, not a capacity gate)
+        if: ${{ !cancelled() }}
+        working-directory: SakikoMind
+        run: >-
+          python -X utf8 performance/sqlite_write_comparison.py
+          --concurrency 4 --requests 12 --repeats 1 --warmup 2
+          --server-threads 4
+          --output-dir "${{ runner.temp }}/sqlite-write-smoke-${{ github.run_id }}-${{ github.run_attempt }}"
+          --environment-note "GitHub-hosted runner smoke; correctness only, not capacity or historical baseline"
+      - name: Preserve API and runner evidence including failures
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aftersales-api-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            SakikoMind/testing/api_regression/reports/*.xml
+            ${{ runner.temp }}/sqlite-write-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 14
+          if-no-files-found: error

@@ -53,3 +53,8 @@ JUnit XML 包含 Python、SQLite、依赖版本、被测源码及测试文件 SH
 `failure-probe-v2.xml` 中的 4 个失败是工具验证，不能作为业务失败或产品缺陷计数。正常接口报告为 `api.xml`，冒烟报告为 `smoke.xml`，写入准入和性能判定测试报告为 `write-admission.xml`。报告保留 14 天，长期复核请按运行 ID 单独保存。
 
 此配置本身不代表 GitHub 已运行，也不配置分支保护。只有取得对应提交的远端 Actions 结果，才能宣称远端通过；将 `After-sales API regression` 设为合并必需检查，还需仓库规则设置。未经真实执行不得宣称合并门禁已经启用。
+
+2026-10-31 已验证运行：[Actions 41178974378](https://github.com/ConstantineChenn/SakikoMind/actions/runs/41178974378)，
+对应提交 `b6d0b86be2ad8a9db710fa975f928d521dc942b4`。56项接口测试与24项写入/状态校验均通过；
+4项smoke为完整接口集子集，4条故意失败诊断探针符合预期。下载的artifact SHA256与GitHub登记摘要一致，
+JUnit记录的存储源码散列与本地三轮性能对照一致。后续提交需读取各自运行记录。

@@ -85,7 +85,7 @@ python -m uvicorn api.aftersales:app --host 127.0.0.1 --port 8002
 | `GET /aftersales/applications/{application_id}/audit` | 查询申请审计事件 |
 | `POST /aftersales/chat` | `message` 以及可选 `order_id`, `application_id`；仅理解、补问与查询 / 准备方案 |
 
-现有主应用也挂载售后路由。通过主应用 `/chat` 请求售后服务时需选择 `service: "aftersales"` 并携带同样的 Bearer 身份；兼容请求中的 `user_id` 不会赋予售后操作权限。模型对话不会自动替代用户确认、审批或执行接口。
+本专项 CI 独立运行售后应用。对于已挂载售后路由的主应用版本，通过 `/chat` 请求售后服务时需选择 `service: "aftersales"` 并携带同样的 Bearer 身份；兼容请求中的 `user_id` 不会赋予售后操作权限。模型对话不会自动替代用户确认、审批或执行接口。
 
 示例查询：
 
@@ -106,11 +106,13 @@ Invoke-RestMethod -Uri 'http://127.0.0.1:8002/aftersales/orders/DEMO-1002' -Head
 
 ## 回归测试
 
-进入 Python 服务目录运行售后专项测试（使用标准库 unittest，无需 pytest）：
+进入 Python 服务目录运行隔离接口、写入准入及性能状态校验测试：
 
 ```powershell
 cd SakikoMind
-python -m unittest discover -s tests -p 'test_aftersales*.py' -v
+python -m pip install -r performance/requirements.txt
+python -m pytest -q -c testing/api_regression/pytest.ini testing/api_regression/cases
+python -m pytest -q tests/test_aftersales_write_admission.py tests/test_sqlite_write_comparison.py
 ```
 
 测试范围围绕初始状态和最终业务状态定义，不能只验证回复中出现“成功”字样：
